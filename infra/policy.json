@@ -1,0 +1,21 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {"description": "Guardrail: deny resources outside the allowed regions (resource-group scope). 'global' is needed for alerts and action groups."},
+  "parameters": {
+    "environment": {"type": "string"},
+    "allowedLocations": {"type": "array"}
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Authorization/policyAssignments",
+      "apiVersion": "2022-06-01",
+      "name": "[concat('allowed-locations-', parameters('environment'))]",
+      "properties": {
+        "displayName": "Allowed locations (cost and governance guardrail)",
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/e56962a6-4747-49cd-b67b-bf8b01975c4c",
+        "parameters": {"listOfAllowedLocations": {"value": "[parameters('allowedLocations')]"}}
+      }
+    }
+  ]
+}

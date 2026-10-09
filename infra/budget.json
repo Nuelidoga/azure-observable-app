@@ -1,0 +1,30 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2018-05-01/subscriptionDeploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {"description": "Monthly cost budget with email alerts. Deploy ONCE per subscription at subscription scope. Budgets notify; they do not stop spending."},
+  "parameters": {
+    "budgetName": {"type": "string", "defaultValue": "obsapp-monthly-budget"},
+    "amount": {"type": "int", "defaultValue": 10},
+    "startDate": {"type": "string", "metadata": {"description": "First day of a month, e.g. 2026-10-01"}},
+    "contactEmails": {"type": "array"}
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Consumption/budgets",
+      "apiVersion": "2023-05-01",
+      "name": "[parameters('budgetName')]",
+      "properties": {
+        "category": "Cost",
+        "amount": "[parameters('amount')]",
+        "timeGrain": "Monthly",
+        "timePeriod": {"startDate": "[parameters('startDate')]"},
+        "notifications": {
+          "actual-50": {"enabled": true, "operator": "GreaterThan", "threshold": 50, "thresholdType": "Actual", "contactEmails": "[parameters('contactEmails')]"},
+          "actual-80": {"enabled": true, "operator": "GreaterThan", "threshold": 80, "thresholdType": "Actual", "contactEmails": "[parameters('contactEmails')]"},
+          "actual-100": {"enabled": true, "operator": "GreaterThan", "threshold": 100, "thresholdType": "Actual", "contactEmails": "[parameters('contactEmails')]"},
+          "forecast-100": {"enabled": true, "operator": "GreaterThan", "threshold": 100, "thresholdType": "Forecasted", "contactEmails": "[parameters('contactEmails')]"}
+        }
+      }
+    }
+  ]
+}

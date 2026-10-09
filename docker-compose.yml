@@ -1,0 +1,38 @@
+# Local development stack: app + SQL Server + Azurite (blob storage emulator). $0 cost.
+services:
+  db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    platform: linux/amd64
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${SA_PASSWORD}
+    ports: ["1433:1433"]
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q 'SELECT 1' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite
+    command: azurite-blob --blobHost 0.0.0.0 --skipApiVersionCheck
+    environment:
+      AZURITE_ACCOUNTS: "devacct:ZGV2LWF6dXJpdGUta2V5LTAxMjM0NTY3ODlhYmNkZWY="
+    ports: ["10000:10000"]
+  app:
+    build: ./app
+    ports: ["8000:8000"]
+    depends_on:
+      db:
+        condition: service_healthy
+      azurite:
+        condition: service_started
+    environment:
+      DB_AUTH: sql
+      DB_INIT: "true"
+      SQL_SERVER: db,1433
+      SQL_DATABASE: tasksdb
+      SQL_USER: sa
+      SQL_PASSWORD: ${SA_PASSWORD}
+      SQL_TRUST_CERT: "yes"
+      ENABLE_CHAOS: "true"
+      STORAGE_CONNECTION_STRING: "DefaultEndpointsProtocol=http;AccountName=devacct;AccountKey=ZGV2LWF6dXJpdGUta2V5LTAxMjM0NTY3ODlhYmNkZWY=;BlobEndpoint=http://azurite:10000/devacct;"

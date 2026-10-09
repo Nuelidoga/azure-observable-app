@@ -1,0 +1,61 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#", "contentVersion": "1.0.0.0",
+  "metadata": {"description": "Log Analytics (capped), workspace-based Application Insights, email action group."},
+  "parameters": {
+    "workspaceName": {"type": "string"},
+    "appInsightsName": {"type": "string"},
+    "actionGroupName": {"type": "string"},
+    "alertEmail": {"type": "string"},
+    "dailyCapGb": {"type": "string", "defaultValue": "0.5", "metadata": {"description": "Daily ingestion cap in GB (cost guardrail)."}},
+    "retentionDays": {"type": "int", "defaultValue": 30},
+    "location": {"type": "string", "defaultValue": "[resourceGroup().location]"},
+    "tags": {"type": "object", "defaultValue": {}}
+  },
+  "resources": [
+    {
+      "type": "Microsoft.OperationalInsights/workspaces",
+      "apiVersion": "2022-10-01",
+      "name": "[parameters('workspaceName')]",
+      "location": "[parameters('location')]",
+      "tags": "[parameters('tags')]",
+      "properties": {
+        "sku": {"name": "PerGB2018"},
+        "retentionInDays": "[parameters('retentionDays')]",
+        "workspaceCapping": {"dailyQuotaGb": "[json(parameters('dailyCapGb'))]"}
+      }
+    },
+    {
+      "type": "Microsoft.Insights/components",
+      "apiVersion": "2020-02-02",
+      "name": "[parameters('appInsightsName')]",
+      "location": "[parameters('location')]",
+      "kind": "web",
+      "tags": "[parameters('tags')]",
+      "dependsOn": ["[resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspaceName'))]"],
+      "properties": {
+        "Application_Type": "web",
+        "IngestionMode": "LogAnalytics",
+        "WorkspaceResourceId": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspaceName'))]"
+      }
+    },
+    {
+      "type": "Microsoft.Insights/actionGroups",
+      "apiVersion": "2023-01-01",
+      "name": "[parameters('actionGroupName')]",
+      "location": "Global",
+      "tags": "[parameters('tags')]",
+      "properties": {
+        "groupShortName": "obs-alerts",
+        "enabled": true,
+        "emailReceivers": [
+          {"name": "owner", "emailAddress": "[parameters('alertEmail')]", "useCommonAlertSchema": true}
+        ]
+      }
+    }
+  ],
+  "outputs": {
+    "workspaceId": {"type": "string", "value": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspaceName'))]"},
+    "appInsightsConnectionString": {"type": "string", "value": "[reference(resourceId('Microsoft.Insights/components', parameters('appInsightsName')), '2020-02-02').ConnectionString]"},
+    "actionGroupId": {"type": "string", "value": "[resourceId('Microsoft.Insights/actionGroups', parameters('actionGroupName'))]"}
+  }
+}

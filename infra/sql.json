@@ -1,0 +1,79 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#", "contentVersion": "1.0.0.0",
+  "metadata": {"description": "Azure SQL logical server (Entra-only auth) + serverless database. useFreeOffer applies the Azure SQL Database free offer. VERIFY the preview API version with what-if if your region/CLI rejects it."},
+  "parameters": {
+    "serverName": {"type": "string"},
+    "databaseName": {"type": "string"},
+    "aadAdminLogin": {"type": "string"},
+    "aadAdminObjectId": {"type": "string"},
+    "aadAdminType": {"type": "string", "defaultValue": "User", "allowedValues": ["User", "Group", "Application"]},
+    "tenantId": {"type": "string", "defaultValue": "[subscription().tenantId]"},
+    "workspaceId": {"type": "string"},
+    "useFreeOffer": {"type": "bool", "defaultValue": true},
+    "location": {"type": "string", "defaultValue": "[resourceGroup().location]"},
+    "tags": {"type": "object", "defaultValue": {}}
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Sql/servers",
+      "apiVersion": "2023-08-01-preview",
+      "name": "[parameters('serverName')]",
+      "location": "[parameters('location')]",
+      "tags": "[parameters('tags')]",
+      "properties": {
+        "version": "12.0",
+        "minimalTlsVersion": "1.2",
+        "publicNetworkAccess": "Enabled",
+        "administrators": {
+          "administratorType": "ActiveDirectory",
+          "principalType": "[parameters('aadAdminType')]",
+          "login": "[parameters('aadAdminLogin')]",
+          "sid": "[parameters('aadAdminObjectId')]",
+          "tenantId": "[parameters('tenantId')]",
+          "azureADOnlyAuthentication": true
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Sql/servers/firewallRules",
+      "apiVersion": "2023-08-01-preview",
+      "name": "[concat(parameters('serverName'), '/AllowAzureServices')]",
+      "dependsOn": ["[resourceId('Microsoft.Sql/servers', parameters('serverName'))]"],
+      "properties": {"startIpAddress": "0.0.0.0", "endIpAddress": "0.0.0.0"}
+    },
+    {
+      "type": "Microsoft.Sql/servers/databases",
+      "apiVersion": "2023-08-01-preview",
+      "name": "[concat(parameters('serverName'), '/', parameters('databaseName'))]",
+      "location": "[parameters('location')]",
+      "tags": "[parameters('tags')]",
+      "dependsOn": ["[resourceId('Microsoft.Sql/servers', parameters('serverName'))]"],
+      "sku": {"name": "GP_S_Gen5_2", "tier": "GeneralPurpose", "family": "Gen5", "capacity": 2},
+      "properties": {
+        "autoPauseDelay": 60,
+        "minCapacity": "[json('0.5')]",
+        "maxSizeBytes": 34359738368,
+        "requestedBackupStorageRedundancy": "Local",
+        "zoneRedundant": false,
+        "useFreeLimit": "[parameters('useFreeOffer')]",
+        "freeLimitExhaustionBehavior": "AutoPause"
+      }
+    },
+    {
+      "type": "Microsoft.Insights/diagnosticSettings",
+      "apiVersion": "2021-05-01-preview",
+      "name": "send-to-log-analytics",
+      "scope": "[concat('Microsoft.Sql/servers/', parameters('serverName'), '/databases/', parameters('databaseName'))]",
+      "dependsOn": ["[resourceId('Microsoft.Sql/servers/databases', parameters('serverName'), parameters('databaseName'))]"],
+      "properties": {
+        "workspaceId": "[parameters('workspaceId')]",
+        "metrics": [{"category": "Basic", "enabled": true}],
+        "logs": [{"category": "Errors", "enabled": true}]
+      }
+    }
+  ],
+  "outputs": {
+    "serverFqdn": {"type": "string", "value": "[reference(resourceId('Microsoft.Sql/servers', parameters('serverName')), '2023-08-01-preview').fullyQualifiedDomainName]"},
+    "databaseId": {"type": "string", "value": "[resourceId('Microsoft.Sql/servers/databases', parameters('serverName'), parameters('databaseName'))]"}
+  }
+}

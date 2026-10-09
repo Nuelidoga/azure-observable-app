@@ -1,0 +1,98 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#", "contentVersion": "1.0.0.0",
+  "metadata": {"description": "Container Apps environment (logs to Log Analytics) + the app, with multiple-revision mode for safe releases."},
+  "parameters": {
+    "environmentName": {"type": "string"},
+    "appName": {"type": "string"},
+    "workspaceName": {"type": "string"},
+    "identityId": {"type": "string"},
+    "identityClientId": {"type": "string"},
+    "acrName": {"type": "string"},
+    "image": {"type": "string", "defaultValue": "mcr.microsoft.com/azuredocs/containerapps-helloworld:latest"},
+    "targetPort": {"type": "int", "defaultValue": 80},
+    "sqlServerFqdn": {"type": "string"},
+    "sqlDatabase": {"type": "string"},
+    "storageAccountUrl": {"type": "string"},
+    "keyVaultSecretUri": {"type": "string"},
+    "enableChaos": {"type": "string", "defaultValue": "false"},
+    "minReplicas": {"type": "int", "defaultValue": 0},
+    "location": {"type": "string", "defaultValue": "[resourceGroup().location]"},
+    "tags": {"type": "object", "defaultValue": {}}
+  },
+  "resources": [
+    {
+      "type": "Microsoft.App/managedEnvironments",
+      "apiVersion": "2023-05-01",
+      "name": "[parameters('environmentName')]",
+      "location": "[parameters('location')]",
+      "tags": "[parameters('tags')]",
+      "properties": {
+        "appLogsConfiguration": {
+          "destination": "log-analytics",
+          "logAnalyticsConfiguration": {
+            "customerId": "[reference(resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspaceName')), '2022-10-01').customerId]",
+            "sharedKey": "[listKeys(resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspaceName')), '2022-10-01').primarySharedKey]"
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.App/containerApps",
+      "apiVersion": "2023-05-01",
+      "name": "[parameters('appName')]",
+      "location": "[parameters('location')]",
+      "tags": "[parameters('tags')]",
+      "dependsOn": ["[resourceId('Microsoft.App/managedEnvironments', parameters('environmentName'))]"],
+      "identity": {
+        "type": "UserAssigned",
+        "userAssignedIdentities": {"[parameters('identityId')]": {}}
+      },
+      "properties": {
+        "managedEnvironmentId": "[resourceId('Microsoft.App/managedEnvironments', parameters('environmentName'))]",
+        "configuration": {
+          "activeRevisionsMode": "Multiple",
+          "ingress": {
+            "external": true,
+            "targetPort": "[parameters('targetPort')]",
+            "transport": "auto",
+            "allowInsecure": false,
+            "traffic": [{"latestRevision": true, "weight": 100}]
+          },
+          "registries": [
+            {"server": "[concat(parameters('acrName'), '.azurecr.io')]", "identity": "[parameters('identityId')]"}
+          ],
+          "secrets": [
+            {"name": "appinsights-conn", "keyVaultUrl": "[parameters('keyVaultSecretUri')]", "identity": "[parameters('identityId')]"}
+          ]
+        },
+        "template": {
+          "containers": [
+            {
+              "name": "app",
+              "image": "[parameters('image')]",
+              "resources": {"cpu": "[json('0.25')]", "memory": "0.5Gi"},
+              "env": [
+                {"name": "DB_AUTH", "value": "managed_identity"},
+                {"name": "SQL_SERVER", "value": "[concat('tcp:', parameters('sqlServerFqdn'), ',1433')]"},
+                {"name": "SQL_DATABASE", "value": "[parameters('sqlDatabase')]"},
+                {"name": "AZURE_CLIENT_ID", "value": "[parameters('identityClientId')]"},
+                {"name": "STORAGE_ACCOUNT_URL", "value": "[parameters('storageAccountUrl')]"},
+                {"name": "ENABLE_CHAOS", "value": "[parameters('enableChaos')]"},
+                {"name": "APPLICATIONINSIGHTS_CONNECTION_STRING", "secretRef": "appinsights-conn"}
+              ]
+            }
+          ],
+          "scale": {
+            "minReplicas": "[parameters('minReplicas')]",
+            "maxReplicas": 2,
+            "rules": [{"name": "http-rule", "http": {"metadata": {"concurrentRequests": "20"}}}]
+          }
+        }
+      }
+    }
+  ],
+  "outputs": {
+    "fqdn": {"type": "string", "value": "[reference(resourceId('Microsoft.App/containerApps', parameters('appName')), '2023-05-01').configuration.ingress.fqdn]"},
+    "appId": {"type": "string", "value": "[resourceId('Microsoft.App/containerApps', parameters('appName'))]"}
+  }
+}

@@ -1,0 +1,104 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#", "contentVersion": "1.0.0.0",
+  "metadata": {"description": "Three metric alerts (cheap): HTTP 5xx, container restarts, SQL CPU. If a metric name is rejected, check it in the portal Metrics blade."},
+  "parameters": {
+    "appName": {"type": "string"},
+    "containerAppId": {"type": "string"},
+    "sqlDatabaseId": {"type": "string"},
+    "actionGroupId": {"type": "string"},
+    "tags": {"type": "object", "defaultValue": {}}
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Insights/metricAlerts",
+      "apiVersion": "2018-03-01",
+      "name": "[concat(parameters('appName'), '-http-5xx')]",
+      "location": "global",
+      "tags": "[parameters('tags')]",
+      "properties": {
+        "description": "More than 5 HTTP 5xx responses in 5 minutes",
+        "severity": 2,
+        "enabled": true,
+        "scopes": ["[parameters('containerAppId')]"],
+        "evaluationFrequency": "PT1M",
+        "windowSize": "PT5M",
+        "criteria": {
+          "odata.type": "Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria",
+          "allOf": [
+            {
+              "name": "http5xx",
+              "criterionType": "StaticThresholdCriterion",
+              "metricNamespace": "Microsoft.App/containerapps",
+              "metricName": "Requests",
+              "dimensions": [{"name": "statusCodeCategory", "operator": "Include", "values": ["5xx"]}],
+              "operator": "GreaterThan",
+              "threshold": 5,
+              "timeAggregation": "Total"
+            }
+          ]
+        },
+        "actions": [{"actionGroupId": "[parameters('actionGroupId')]"}]
+      }
+    },
+    {
+      "type": "Microsoft.Insights/metricAlerts",
+      "apiVersion": "2018-03-01",
+      "name": "[concat(parameters('appName'), '-restarts')]",
+      "location": "global",
+      "tags": "[parameters('tags')]",
+      "properties": {
+        "description": "Container restarted",
+        "severity": 2,
+        "enabled": true,
+        "scopes": ["[parameters('containerAppId')]"],
+        "evaluationFrequency": "PT1M",
+        "windowSize": "PT5M",
+        "criteria": {
+          "odata.type": "Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria",
+          "allOf": [
+            {
+              "name": "restarts",
+              "criterionType": "StaticThresholdCriterion",
+              "metricNamespace": "Microsoft.App/containerapps",
+              "metricName": "RestartCount",
+              "operator": "GreaterThan",
+              "threshold": 0,
+              "timeAggregation": "Total"
+            }
+          ]
+        },
+        "actions": [{"actionGroupId": "[parameters('actionGroupId')]"}]
+      }
+    },
+    {
+      "type": "Microsoft.Insights/metricAlerts",
+      "apiVersion": "2018-03-01",
+      "name": "[concat(parameters('appName'), '-sql-cpu')]",
+      "location": "global",
+      "tags": "[parameters('tags')]",
+      "properties": {
+        "description": "SQL CPU above 80% for 5 minutes",
+        "severity": 3,
+        "enabled": true,
+        "scopes": ["[parameters('sqlDatabaseId')]"],
+        "evaluationFrequency": "PT5M",
+        "windowSize": "PT15M",
+        "criteria": {
+          "odata.type": "Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria",
+          "allOf": [
+            {
+              "name": "sqlcpu",
+              "criterionType": "StaticThresholdCriterion",
+              "metricNamespace": "Microsoft.Sql/servers/databases",
+              "metricName": "cpu_percent",
+              "operator": "GreaterThan",
+              "threshold": 80,
+              "timeAggregation": "Average"
+            }
+          ]
+        },
+        "actions": [{"actionGroupId": "[parameters('actionGroupId')]"}]
+      }
+    }
+  ]
+}
